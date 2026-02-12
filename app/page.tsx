@@ -86,6 +86,13 @@ export default function Home() {
   const isPhoneComplete = (masked: string) =>
     masked.replace(/\D/g, "").length === 11;
 
+  const handleSignatureFocus = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
+
+
   const calcAge = (isoDate: string) => {
     if (!isoDate) return "";
     const birth = new Date(isoDate);
@@ -938,6 +945,7 @@ export default function Home() {
             <SignatureCanvas
               ref={sigRef}
               penColor="black"
+              onBegin={handleSignatureFocus}
               canvasProps={{ className: "w-full h-40" }}
             />
           </div>
