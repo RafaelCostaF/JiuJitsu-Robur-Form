@@ -37,6 +37,9 @@ export default function Home() {
     filename: string;
   } | null>(null);
 
+  // ✅ Loading + bloqueio de tela
+  const [isGenerating, setIsGenerating] = useState(false);
+
   const [form, setForm] = useState<FormState>({
     nome: "",
     nascimento: "",
@@ -69,6 +72,16 @@ export default function Home() {
     };
   }, [pdfInfo]);
 
+  // ✅ Bloqueia scroll quando estiver gerando PDF
+  useEffect(() => {
+    if (!isGenerating) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isGenerating]);
+
   const nomeRegex = /^[A-Za-zÀ-ÿ]+(\s[A-Za-zÀ-ÿ]+)+$/;
 
   const formatPhone11 = (value: string) => {
@@ -91,7 +104,6 @@ export default function Home() {
       document.activeElement.blur();
     }
   };
-
 
   const calcAge = (isoDate: string) => {
     if (!isoDate) return "";
@@ -239,6 +251,7 @@ export default function Home() {
       alert("A assinatura é obrigatória.");
       return false;
     }
+
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length > 0) {
@@ -249,270 +262,250 @@ export default function Home() {
   };
 
   const generatePDF = async () => {
+    if (isGenerating) return;
     if (!validateForm()) return;
 
-    // ✅ Import dinâmico (evita problemas de build/SSR)
-    const { default: jsPDF } = await import("jspdf");
-
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 14;
-    const contentW = pageW - margin * 2;
-
-    let y = 0;
-    const ensureSpace = (needed: number) => {
-      if (y + needed > pageH - margin) {
-        pdf.addPage();
-        y = margin;
-      }
-    };
-
-    const setText = (size: number, style: "normal" | "bold" = "normal") => {
-      pdf.setFont("helvetica", style);
-      pdf.setFontSize(size);
-    };
-
-    const drawSectionTitle = (title: string) => {
-      ensureSpace(14);
-      pdf.setDrawColor(220);
-      pdf.setFillColor(245, 245, 245);
-      pdf.rect(margin, y, contentW, 9, "FD");
-      setText(12, "bold");
-      pdf.setTextColor(20);
-      pdf.text(title, margin + 3, y + 6.5);
-      y += 13;
-      pdf.setTextColor(0);
-    };
-
-    const safe = (v: string) => (v?.trim() ? v.trim() : "-");
-
-    const formatDateBR = (iso: string) => {
-      try {
-        if (!iso) return "-";
-        return new Date(iso).toLocaleDateString("pt-BR");
-      } catch {
-        return "-";
-      }
-    };
-
-    const measureCardHeight = (label: string, value: string, w: number) => {
-      setText(9, "bold");
-      const labelLines = pdf.splitTextToSize(label, w - 6);
-      setText(11, "normal");
-      const valueLines = pdf.splitTextToSize(value, w - 6);
-      return 3 + labelLines.length * 4 + 2 + valueLines.length * 5 + 3;
-    };
-
-    const drawCard = (
-      x: number,
-      w: number,
-      label: string,
-      value: string,
-      h: number
-    ) => {
-      pdf.setDrawColor(220);
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(x, y, w, h, "FD");
-
-      setText(9, "bold");
-      pdf.setTextColor(80);
-      const labelLines = pdf.splitTextToSize(label, w - 6);
-      pdf.text(labelLines, x + 3, y + 6);
-
-      setText(11, "normal");
-      pdf.setTextColor(0);
-      const valueLines = pdf.splitTextToSize(value, w - 6);
-      const labelBlockH = labelLines.length * 4;
-      pdf.text(valueLines, x + 3, y + 6 + labelBlockH + 4);
-    };
-
-    const drawTwoColRow = (
-      left: { label: string; value: string },
-      right: { label: string; value: string }
-    ) => {
-      const gap = 6;
-      const colW = (contentW - gap) / 2;
-
-      const hL = measureCardHeight(left.label, left.value, colW);
-      const hR = measureCardHeight(right.label, right.value, colW);
-      const rowH = Math.max(hL, hR);
-
-      ensureSpace(rowH + 2);
-
-      drawCard(margin, colW, left.label, left.value, rowH);
-      drawCard(margin + colW + gap, colW, right.label, right.value, rowH);
-
-      y += rowH + 6;
-      pdf.setTextColor(0);
-    };
-
-    const drawFullRow = (item: { label: string; value: string }) => {
-      const h = measureCardHeight(item.label, item.value, contentW);
-      ensureSpace(h + 2);
-      drawCard(margin, contentW, item.label, item.value, h);
-      y += h + 6;
-    };
-
-    const img = new Image();
-    img.src = "/logo.png";
-    await new Promise((resolve) => (img.onload = resolve));
-
-    const desiredLogoH = 86;
-    const ratio = img.width / img.height || 3;
-    let logoH = desiredLogoH;
-    let logoW = logoH * ratio;
-
-    if (logoW > contentW) {
-      logoW = contentW;
-      logoH = logoW / ratio;
-    }
-
-    const logoX = (pageW - logoW) / 2;
-
-    y = margin;
-    pdf.addImage(img, "PNG", logoX, y, logoW, logoH);
-    y += logoH + 8;
-
-    setText(18, "bold");
-    pdf.setTextColor(10);
-    pdf.text("Ficha de Cadastro", pageW / 2, y, { align: "center" });
-    y += 6;
-
-    pdf.setDrawColor(220);
-    pdf.line(margin, y, pageW - margin, y);
-    y += 10;
-    pdf.setTextColor(0);
-
-    drawSectionTitle("Informações Pessoais");
-
-    drawTwoColRow(
-      { label: "Nome completo", value: safe(form.nome) },
-      { label: "Data de nascimento", value: formatDateBR(form.nascimento) }
-    );
-
-    drawTwoColRow(
-      { label: "Idade", value: safe(form.idade) },
-      { label: "Peso (kg)", value: safe(form.peso) }
-    );
-
-    drawFullRow({ label: "Endereço", value: safe(form.endereco) });
-
-    drawTwoColRow(
-      { label: "Telefone", value: safe(form.telefone) },
-      { label: "Contato emergência", value: safe(form.emergencia) }
-    );
-
-    drawTwoColRow(
-      { label: "Responsável (se menor de idade)", value: safe(form.responsavel) },
-      { label: "Telefone responsável", value: safe(form.telefoneResponsavel) }
-    );
-
-    drawTwoColRow(
-      { label: "Dia vencimento mensalidade", value: safe(form.vencimento) },
-      { label: "Data do cadastro", value: safe(form.dataHoje) }
-    );
-
-    drawSectionTitle("Saúde");
-
-    drawFullRow({
-      label: "Restrição médica",
-      value:
-        form.restricao === "Sim"
-          ? `Sim — ${safe(form.restricaoDesc)}`
-          : "Não",
-    });
-
-    drawFullRow({
-      label: "Medicamentos contínuos",
-      value:
-        form.medicamentos === "Sim"
-          ? `Sim — ${safe(form.medicamentosDesc)}`
-          : "Não",
-    });
-
-    drawFullRow({
-      label: "Atividade anterior",
-      value:
-        form.atividade === "Sim"
-          ? `Sim — ${safe(form.atividadeDesc)}`
-          : "Não",
-    });
-
-    const signature = sigRef.current?.getTrimmedCanvas().toDataURL("image/png");
-    if (signature) {
-      drawSectionTitle("Assinatura");
-
-      const boxH = 35;
-      ensureSpace(boxH + 10);
-
-      pdf.setDrawColor(220);
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(margin, y, contentW, boxH, "FD");
-
-      const sigW = 90;
-      const sigH = 28;
-      const sigX = margin + (contentW - sigW) / 2;
-      const sigY = y + (boxH - sigH) / 2;
-      pdf.addImage(signature, "PNG", sigX, sigY, sigW, sigH);
-
-      y += boxH + 8;
-    }
-
-    ensureSpace(12);
-    pdf.setDrawColor(230);
-    pdf.line(margin, pageH - margin, pageW - margin, pageH - margin);
-
-    setText(9, "normal");
-    pdf.setTextColor(120);
-    pdf.text(`Gerado em: ${form.dataHoje}`, margin, pageH - margin + 6);
-    pdf.text(`Página 1`, pageW - margin, pageH - margin + 6, {
-      align: "right",
-    });
-
-    const filename = `Ficha-${form.nome}.pdf`;
-
-    const blob = pdf.output("blob");
-    const url = URL.createObjectURL(blob);
-
-    pdf.save(filename);
-
-    setPdfInfo((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url);
-      return { blob, url, filename };
-    });
-    setView("success");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleShare = async () => {
-    if (!pdfInfo) return;
-
-    const file = new File([pdfInfo.blob], pdfInfo.filename, {
-      type: "application/pdf",
-    });
-
-    const canShareFiles =
-      typeof navigator !== "undefined" &&
-      // @ts-ignore
-      typeof navigator.share === "function" &&
-      // @ts-ignore
-      typeof navigator.canShare === "function" &&
-      // @ts-ignore
-      navigator.canShare({ files: [file] });
+    setIsGenerating(true);
 
     try {
-      if (canShareFiles) {
-        // @ts-ignore
-        await navigator.share({
-          title: "Ficha de Cadastro",
-          text: "Segue o PDF da ficha de cadastro.",
-          files: [file],
-        });
-      } else {
-        window.open(pdfInfo.url, "_blank", "noopener,noreferrer");
+      const { default: jsPDF } = await import("jspdf");
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentW = pageW - margin * 2;
+
+      let y = 0;
+      const ensureSpace = (needed: number) => {
+        if (y + needed > pageH - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+      };
+
+      const setText = (size: number, style: "normal" | "bold" = "normal") => {
+        pdf.setFont("helvetica", style);
+        pdf.setFontSize(size);
+      };
+
+      const drawSectionTitle = (title: string) => {
+        ensureSpace(14);
+        pdf.setDrawColor(220);
+        pdf.setFillColor(245, 245, 245);
+        pdf.rect(margin, y, contentW, 9, "FD");
+        setText(12, "bold");
+        pdf.setTextColor(20);
+        pdf.text(title, margin + 3, y + 6.5);
+        y += 13;
+        pdf.setTextColor(0);
+      };
+
+      const safe = (v: string) => (v?.trim() ? v.trim() : "-");
+
+      const formatDateBR = (iso: string) => {
+        try {
+          if (!iso) return "-";
+          return new Date(iso).toLocaleDateString("pt-BR");
+        } catch {
+          return "-";
+        }
+      };
+
+      const measureCardHeight = (label: string, value: string, w: number) => {
+        setText(9, "bold");
+        const labelLines = pdf.splitTextToSize(label, w - 6);
+        setText(11, "normal");
+        const valueLines = pdf.splitTextToSize(value, w - 6);
+        return 3 + labelLines.length * 4 + 2 + valueLines.length * 5 + 3;
+      };
+
+      const drawCard = (
+        x: number,
+        w: number,
+        label: string,
+        value: string,
+        h: number
+      ) => {
+        pdf.setDrawColor(220);
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(x, y, w, h, "FD");
+
+        setText(9, "bold");
+        pdf.setTextColor(80);
+        const labelLines = pdf.splitTextToSize(label, w - 6);
+        pdf.text(labelLines, x + 3, y + 6);
+
+        setText(11, "normal");
+        pdf.setTextColor(0);
+        const valueLines = pdf.splitTextToSize(value, w - 6);
+        const labelBlockH = labelLines.length * 4;
+        pdf.text(valueLines, x + 3, y + 6 + labelBlockH + 4);
+      };
+
+      const drawTwoColRow = (
+        left: { label: string; value: string },
+        right: { label: string; value: string }
+      ) => {
+        const gap = 6;
+        const colW = (contentW - gap) / 2;
+
+        const hL = measureCardHeight(left.label, left.value, colW);
+        const hR = measureCardHeight(right.label, right.value, colW);
+        const rowH = Math.max(hL, hR);
+
+        ensureSpace(rowH + 2);
+
+        drawCard(margin, colW, left.label, left.value, rowH);
+        drawCard(margin + colW + gap, colW, right.label, right.value, rowH);
+
+        y += rowH + 6;
+        pdf.setTextColor(0);
+      };
+
+      const drawFullRow = (item: { label: string; value: string }) => {
+        const h = measureCardHeight(item.label, item.value, contentW);
+        ensureSpace(h + 2);
+        drawCard(margin, contentW, item.label, item.value, h);
+        y += h + 6;
+      };
+
+      const img = new Image();
+      img.src = "/logo.png";
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Falha ao carregar /logo.png"));
+      });
+
+      const desiredLogoH = 86;
+      const ratio = img.width / img.height || 3;
+      let logoH = desiredLogoH;
+      let logoW = logoH * ratio;
+
+      if (logoW > contentW) {
+        logoW = contentW;
+        logoH = logoW / ratio;
       }
-    } catch {}
+
+      const logoX = (pageW - logoW) / 2;
+
+      y = margin;
+      pdf.addImage(img, "PNG", logoX, y, logoW, logoH);
+      y += logoH + 8;
+
+      setText(18, "bold");
+      pdf.setTextColor(10);
+      pdf.text("Ficha de Cadastro", pageW / 2, y, { align: "center" });
+      y += 6;
+
+      pdf.setDrawColor(220);
+      pdf.line(margin, y, pageW - margin, y);
+      y += 10;
+      pdf.setTextColor(0);
+
+      drawSectionTitle("Informações Pessoais");
+
+      drawTwoColRow(
+        { label: "Nome completo", value: safe(form.nome) },
+        { label: "Data de nascimento", value: formatDateBR(form.nascimento) }
+      );
+
+      drawTwoColRow(
+        { label: "Idade", value: safe(form.idade) },
+        { label: "Peso (kg)", value: safe(form.peso) }
+      );
+
+      drawFullRow({ label: "Endereço", value: safe(form.endereco) });
+
+      drawTwoColRow(
+        { label: "Telefone", value: safe(form.telefone) },
+        { label: "Contato emergência", value: safe(form.emergencia) }
+      );
+
+      drawTwoColRow(
+        {
+          label: "Responsável (se menor de idade)",
+          value: safe(form.responsavel),
+        },
+        { label: "Telefone responsável", value: safe(form.telefoneResponsavel) }
+      );
+
+      drawTwoColRow(
+        { label: "Dia vencimento mensalidade", value: safe(form.vencimento) },
+        { label: "Data do cadastro", value: safe(form.dataHoje) }
+      );
+
+      drawSectionTitle("Saúde");
+
+      drawFullRow({
+        label: "Restrição médica",
+        value:
+          form.restricao === "Sim"
+            ? `Sim — ${safe(form.restricaoDesc)}`
+            : "Não",
+      });
+
+      drawFullRow({
+        label: "Medicamentos contínuos",
+        value:
+          form.medicamentos === "Sim"
+            ? `Sim — ${safe(form.medicamentosDesc)}`
+            : "Não",
+      });
+
+      drawFullRow({
+        label: "Atividade anterior",
+        value:
+          form.atividade === "Sim" ? `Sim — ${safe(form.atividadeDesc)}` : "Não",
+      });
+
+      const signature = sigRef.current
+        ?.getTrimmedCanvas()
+        .toDataURL("image/png");
+
+      if (signature) {
+        drawSectionTitle("Assinatura");
+
+        const boxH = 35;
+        ensureSpace(boxH + 10);
+
+        pdf.setDrawColor(220);
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(margin, y, contentW, boxH, "FD");
+
+        const sigW = 90;
+        const sigH = 28;
+        const sigX = margin + (contentW - sigW) / 2;
+        const sigY = y + (boxH - sigH) / 2;
+        pdf.addImage(signature, "PNG", sigX, sigY, sigW, sigH);
+
+        y += boxH + 8;
+      }
+
+      setText(9, "normal");
+      pdf.setTextColor(120);
+      pdf.text(`Gerado em: ${form.dataHoje}`, margin, pageH - margin + 6);
+
+      const filename = `Ficha-${form.nome}.pdf`;
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+
+      pdf.save(filename);
+
+      setPdfInfo((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return { blob, url, filename };
+      });
+
+      setView("success");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gerar o PDF.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const resetToForm = () => {
@@ -538,11 +531,12 @@ export default function Home() {
       dataHoje: new Date().toLocaleDateString("pt-BR"),
     });
     setView("form");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const inputClass = (key: keyof FormState) =>
-    `input ${errors[key] ? "inputError" : ""}`;
+    `w-full p-3 rounded-xl bg-neutral-800 border ${
+      errors[key] ? "border-red-500" : "border-neutral-700"
+    } text-white outline-none`;
 
   if (view === "success") {
     return (
@@ -558,31 +552,12 @@ export default function Home() {
             </p>
           )}
 
-          <div className="bg-neutral-800 rounded-xl p-4 space-y-2">
-            <p className="font-semibold">Siga a página no Instagram</p>
-            <a
-              href="https://www.instagram.com/roburjiujitsu/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block text-red-400 underline"
-            >
-              @roburjiujitsu
-            </a>
-          </div>
-
-          <button
-            onClick={handleShare}
-            className="w-full bg-red-600 hover:bg-red-700 transition p-3 rounded-xl font-semibold"
-          >
-            Compartilhar PDF
-          </button>
-
           {pdfInfo && (
             <a
               href={pdfInfo.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="block w-full bg-neutral-800 hover:bg-neutral-700 transition p-3 rounded-xl font-semibold"
+              className="block w-full bg-red-600 hover:bg-red-700 transition p-3 rounded-xl font-semibold"
             >
               Abrir PDF
             </a>
@@ -595,6 +570,15 @@ export default function Home() {
             Voltar para o cadastro
           </button>
         </div>
+
+        {isGenerating && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+              <div className="h-14 w-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+              <p className="text-sm text-white">Gerando PDF...</p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -610,158 +594,162 @@ export default function Home() {
         <h2 className="text-xl font-bold text-center">Informações Pessoais</h2>
 
         <div>
-          <label className="label">Nome completo</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Nome completo
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.nome = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.nome = el)}
             name="nome"
             value={form.nome}
             onChange={handleChange}
             className={inputClass("nome")}
+            disabled={isGenerating}
           />
-          {errors.nome && <p className="errorText">{errors.nome}</p>}
+          {errors.nome && (
+            <p className="text-xs text-red-400 mt-1">{errors.nome}</p>
+          )}
         </div>
 
         <div>
-          <label className="label">Data de nascimento</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Data de nascimento
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.nascimento = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.nascimento = el)}
             type="date"
             name="nascimento"
             value={form.nascimento}
             onChange={handleChange}
             className={inputClass("nascimento")}
+            disabled={isGenerating}
           />
           {errors.nascimento && (
-            <p className="errorText">{errors.nascimento}</p>
+            <p className="text-xs text-red-400 mt-1">{errors.nascimento}</p>
           )}
         </div>
 
         <div>
-          <label className="label">Idade</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Idade
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.idade = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.idade = el)}
             name="idade"
             value={form.idade}
             onChange={handleChange}
             className={inputClass("idade")}
+            disabled={isGenerating}
           />
-          {errors.idade && <p className="errorText">{errors.idade}</p>}
+          {errors.idade && (
+            <p className="text-xs text-red-400 mt-1">{errors.idade}</p>
+          )}
         </div>
 
         <div>
-          <label className="label">Peso (kg)</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Peso (kg)
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.peso = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.peso = el)}
             name="peso"
             value={form.peso}
             onChange={handleChange}
             className={inputClass("peso")}
+            disabled={isGenerating}
           />
-          {errors.peso && <p className="errorText">{errors.peso}</p>}
+          {errors.peso && (
+            <p className="text-xs text-red-400 mt-1">{errors.peso}</p>
+          )}
         </div>
 
         <div>
-          <label className="label">Endereço</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Endereço
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.endereco = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.endereco = el)}
             name="endereco"
             value={form.endereco}
             onChange={handleChange}
             className={inputClass("endereco")}
+            disabled={isGenerating}
           />
-          {errors.endereco && <p className="errorText">{errors.endereco}</p>}
+          {errors.endereco && (
+            <p className="text-xs text-red-400 mt-1">{errors.endereco}</p>
+          )}
         </div>
 
         <div>
-          <label className="label">Telefone (xx) xxxxx-xxxx</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Telefone (xx) xxxxx-xxxx
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.telefone = el;
-            }}
+            ref={(el) => (fieldRefs.current.telefone = el)}
             name="telefone"
             value={form.telefone}
             onChange={handleChange}
             className={inputClass("telefone")}
             inputMode="numeric"
+            disabled={isGenerating}
           />
-          {errors.telefone && <p className="errorText">{errors.telefone}</p>}
-        </div>
-
-        <div>
-          <label className="label">Responsável (se menor)</label>
-          <input
-            ref={(el) => {
-              fieldRefs.current.responsavel = el;
-            }}
-            name="responsavel"
-            value={form.responsavel}
-            onChange={handleChange}
-            className={inputClass("responsavel")}
-          />
-          {errors.responsavel && (
-            <p className="errorText">{errors.responsavel}</p>
+          {errors.telefone && (
+            <p className="text-xs text-red-400 mt-1">{errors.telefone}</p>
           )}
         </div>
 
         <div>
-          <label className="label">Telefone responsável (xx) xxxxx-xxxx</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Responsável (se menor)
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.telefoneResponsavel = el;
-            }}
+            ref={(el) => (fieldRefs.current.responsavel = el)}
+            name="responsavel"
+            value={form.responsavel}
+            onChange={handleChange}
+            className={inputClass("responsavel")}
+            disabled={isGenerating}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Telefone responsável (xx) xxxxx-xxxx
+          </label>
+          <input
+            ref={(el) => (fieldRefs.current.telefoneResponsavel = el)}
             name="telefoneResponsavel"
             value={form.telefoneResponsavel}
             onChange={handleChange}
             className={inputClass("telefoneResponsavel")}
             inputMode="numeric"
+            disabled={isGenerating}
           />
-          {errors.telefoneResponsavel && (
-            <p className="errorText">{errors.telefoneResponsavel}</p>
-          )}
         </div>
 
         <div>
-          <label className="label">Contato emergência (xx) xxxxx-xxxx</label>
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Contato emergência (xx) xxxxx-xxxx
+          </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.emergencia = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.emergencia = el)}
             name="emergencia"
             value={form.emergencia}
             onChange={handleChange}
             className={inputClass("emergencia")}
             inputMode="numeric"
+            disabled={isGenerating}
           />
           {errors.emergencia && (
-            <p className="errorText">{errors.emergencia}</p>
+            <p className="text-xs text-red-400 mt-1">{errors.emergencia}</p>
           )}
         </div>
 
         <div>
-          <label className="label">
-            Dia de vencimento (1 a 31) - data de pagamento da mensalidade
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Dia de vencimento (1 a 31)
           </label>
           <input
-            ref={(el) => {
-              fieldRefs.current.vencimento = el;
-            }}
-            required
+            ref={(el) => (fieldRefs.current.vencimento = el)}
             type="number"
             min="1"
             max="31"
@@ -769,9 +757,10 @@ export default function Home() {
             value={form.vencimento}
             onChange={handleChange}
             className={inputClass("vencimento")}
+            disabled={isGenerating}
           />
           {errors.vencimento && (
-            <p className="errorText">{errors.vencimento}</p>
+            <p className="text-xs text-red-400 mt-1">{errors.vencimento}</p>
           )}
         </div>
 
@@ -780,50 +769,54 @@ export default function Home() {
 
         <div>
           <p className="font-semibold">1. Possui alguma restrição médica?</p>
-          <div className={`flex gap-4 ${errors.restricao ? "radioError" : ""}`}>
-            <label>
+          <div
+            className={`flex gap-4 ${
+              errors.restricao ? "border border-red-500 p-2 rounded-xl" : ""
+            }`}
+          >
+            <label className="flex items-center gap-2">
               <input
-                ref={(el) => {
-                  fieldRefs.current.restricao = el;
-                }}
-                required
                 type="radio"
                 name="restricao"
                 value="Sim"
                 checked={form.restricao === "Sim"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Sim
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
-                required
                 type="radio"
                 name="restricao"
                 value="Não"
                 checked={form.restricao === "Não"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Não
             </label>
           </div>
-          {errors.restricao && <p className="errorText">{errors.restricao}</p>}
+          {errors.restricao && (
+            <p className="text-xs text-red-400 mt-1">{errors.restricao}</p>
+          )}
 
           {form.restricao === "Sim" && (
             <div>
-              <label className="label">Qual restrição?</label>
+              <label className="block text-sm mt-4 mb-2 text-neutral-300">
+                Qual restrição?
+              </label>
               <input
-                ref={(el) => {
-                  fieldRefs.current.restricaoDesc = el;
-                }}
-                required
                 name="restricaoDesc"
                 value={form.restricaoDesc}
                 onChange={handleChange}
                 className={inputClass("restricaoDesc")}
+                disabled={isGenerating}
               />
               {errors.restricaoDesc && (
-                <p className="errorText">{errors.restricaoDesc}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  {errors.restricaoDesc}
+                </p>
               )}
             </div>
           )}
@@ -833,54 +826,52 @@ export default function Home() {
           <p className="font-semibold">2. Faz uso contínuo de medicamentos?</p>
           <div
             className={`flex gap-4 ${
-              errors.medicamentos ? "radioError" : ""
+              errors.medicamentos ? "border border-red-500 p-2 rounded-xl" : ""
             }`}
           >
-            <label>
+            <label className="flex items-center gap-2">
               <input
-                ref={(el) => {
-                  fieldRefs.current.medicamentos = el;
-                }}
-                required
                 type="radio"
                 name="medicamentos"
                 value="Sim"
                 checked={form.medicamentos === "Sim"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Sim
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
-                required
                 type="radio"
                 name="medicamentos"
                 value="Não"
                 checked={form.medicamentos === "Não"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Não
             </label>
           </div>
           {errors.medicamentos && (
-            <p className="errorText">{errors.medicamentos}</p>
+            <p className="text-xs text-red-400 mt-1">{errors.medicamentos}</p>
           )}
 
           {form.medicamentos === "Sim" && (
             <div>
-              <label className="label">Quais medicamentos?</label>
+              <label className="block text-sm mt-4 mb-2 text-neutral-300">
+                Quais medicamentos?
+              </label>
               <input
-                ref={(el) => {
-                  fieldRefs.current.medicamentosDesc = el;
-                }}
-                required
                 name="medicamentosDesc"
                 value={form.medicamentosDesc}
                 onChange={handleChange}
                 className={inputClass("medicamentosDesc")}
+                disabled={isGenerating}
               />
               {errors.medicamentosDesc && (
-                <p className="errorText">{errors.medicamentosDesc}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  {errors.medicamentosDesc}
+                </p>
               )}
             </div>
           )}
@@ -890,50 +881,54 @@ export default function Home() {
           <p className="font-semibold">
             3. Já praticou outra atividade física ou arte marcial?
           </p>
-          <div className={`flex gap-4 ${errors.atividade ? "radioError" : ""}`}>
-            <label>
+          <div
+            className={`flex gap-4 ${
+              errors.atividade ? "border border-red-500 p-2 rounded-xl" : ""
+            }`}
+          >
+            <label className="flex items-center gap-2">
               <input
-                ref={(el) => {
-                  fieldRefs.current.atividade = el;
-                }}
-                required
                 type="radio"
                 name="atividade"
                 value="Sim"
                 checked={form.atividade === "Sim"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Sim
             </label>
-            <label>
+            <label className="flex items-center gap-2">
               <input
-                required
                 type="radio"
                 name="atividade"
                 value="Não"
                 checked={form.atividade === "Não"}
                 onChange={handleChange}
-              />{" "}
+                disabled={isGenerating}
+              />
               Não
             </label>
           </div>
-          {errors.atividade && <p className="errorText">{errors.atividade}</p>}
+          {errors.atividade && (
+            <p className="text-xs text-red-400 mt-1">{errors.atividade}</p>
+          )}
 
           {form.atividade === "Sim" && (
             <div>
-              <label className="label">Qual atividade?</label>
+              <label className="block text-sm mt-4 mb-2 text-neutral-300">
+                Qual atividade?
+              </label>
               <input
-                ref={(el) => {
-                  fieldRefs.current.atividadeDesc = el;
-                }}
-                required
                 name="atividadeDesc"
                 value={form.atividadeDesc}
                 onChange={handleChange}
                 className={inputClass("atividadeDesc")}
+                disabled={isGenerating}
               />
               {errors.atividadeDesc && (
-                <p className="errorText">{errors.atividadeDesc}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  {errors.atividadeDesc}
+                </p>
               )}
             </div>
           )}
@@ -941,7 +936,7 @@ export default function Home() {
 
         <div>
           <p className="font-semibold">Assinatura</p>
-          <div className="bg-white rounded-lg">
+          <div className="bg-white rounded-xl overflow-hidden">
             <SignatureCanvas
               ref={sigRef}
               penColor="black"
@@ -952,61 +947,41 @@ export default function Home() {
           <button
             type="button"
             onClick={() => sigRef.current?.clear()}
-            className="text-sm text-red-400"
+            className="text-sm text-red-400 mt-2"
+            disabled={isGenerating}
           >
             Limpar assinatura
           </button>
         </div>
 
         <div>
-          <label className="label">Data</label>
-          <input value={form.dataHoje} readOnly className="input" />
+          <label className="block text-sm mt-4 mb-2 text-neutral-300">
+            Data
+          </label>
+          <input value={form.dataHoje} readOnly className={inputClass("dataHoje")} />
         </div>
 
         <button
           onClick={generatePDF}
-          className="w-full bg-red-600 hover:bg-red-700 transition p-3 rounded-xl font-semibold"
+          disabled={isGenerating}
+          className={`w-full transition p-3 rounded-xl font-semibold ${
+            isGenerating
+              ? "bg-red-600/60 cursor-not-allowed"
+              : "bg-red-600 hover:bg-red-700"
+          }`}
         >
-          Gerar PDF
+          {isGenerating ? "Gerando..." : "Gerar PDF"}
         </button>
       </div>
 
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border-radius: 10px;
-          background: #1f1f1f;
-          border: 1px solid #333;
-          color: white;
-          margin-top: 6px;
-          outline: none;
-        }
-
-        .inputError {
-          border-color: #ef4444;
-        }
-
-        .label {
-          display: block;
-          font-size: 14px;
-          margin-top: 14px;
-          margin-bottom: 6px;
-          color: #ccc;
-        }
-
-        .errorText {
-          margin-top: 6px;
-          font-size: 12px;
-          color: #fca5a5;
-        }
-
-        .radioError {
-          padding: 8px;
-          border: 1px solid #ef4444;
-          border-radius: 10px;
-        }
-      `}</style>
+      {isGenerating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-14 w-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+            <p className="text-sm text-white">Gerando PDF...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
