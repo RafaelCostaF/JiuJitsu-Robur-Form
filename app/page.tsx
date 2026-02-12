@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import jsPDF from "jspdf";
 
@@ -31,6 +31,13 @@ export default function Home() {
 
   const todayBR = new Date().toLocaleDateString("pt-BR");
 
+  const [view, setView] = useState<"form" | "success">("form");
+  const [pdfInfo, setPdfInfo] = useState<{
+    blob: Blob;
+    url: string;
+    filename: string;
+  } | null>(null);
+
   const [form, setForm] = useState<FormState>({
     nome: "",
     nascimento: "",
@@ -56,6 +63,19 @@ export default function Home() {
   const fieldRefs = useRef<
     Partial<Record<keyof FormState, HTMLInputElement | null>>
   >({});
+
+  useEffect(() => {
+    return () => {
+      if (pdfInfo?.url) URL.revokeObjectURL(pdfInfo.url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pdfInfo?.url) URL.revokeObjectURL(pdfInfo.url);
+    };
+  }, [pdfInfo]);
 
   // Regex nome + sobrenome
   const nomeRegex = /^[A-Za-zÀ-ÿ]+(\s[A-Za-zÀ-ÿ]+)+$/;
@@ -248,7 +268,6 @@ export default function Home() {
       }
     };
 
-    // Helpers visuais
     const setText = (size: number, style: "normal" | "bold" = "normal") => {
       pdf.setFont("helvetica", style);
       pdf.setFontSize(size);
@@ -277,7 +296,6 @@ export default function Home() {
       }
     };
 
-    // Campo em “card”
     const measureCardHeight = (label: string, value: string, w: number) => {
       setText(9, "bold");
       const labelLines = pdf.splitTextToSize(label, w - 6);
@@ -341,13 +359,12 @@ export default function Home() {
     img.src = "/logo.png";
     await new Promise((resolve) => (img.onload = resolve));
 
-    // Aumenta a altura desejada e mantém proporção.
-    const desiredLogoH = 72; // <-- MAIOR VERTICALMENTE
-    const ratio = img.width / img.height || 3; // fallback
+    // AUMENTA MAIS A ALTURA DA LOGO (verticalmente)
+    const desiredLogoH = 86; // <-- aumente aqui se quiser ainda maior
+    const ratio = img.width / img.height || 3;
     let logoH = desiredLogoH;
     let logoW = logoH * ratio;
 
-    // Se estourar a largura útil, limita e recalcula mantendo proporção
     if (logoW > contentW) {
       logoW = contentW;
       logoH = logoW / ratio;
@@ -369,7 +386,6 @@ export default function Home() {
     y += 10;
     pdf.setTextColor(0);
 
-    // --- Conteúdo em cards / grid ---
     drawSectionTitle("Informações Pessoais");
 
     drawTwoColRow(
@@ -425,7 +441,6 @@ export default function Home() {
           : "Não",
     });
 
-    // --- Assinatura (com moldura) ---
     const signature = sigRef.current?.getTrimmedCanvas().toDataURL("image/png");
     if (signature) {
       drawSectionTitle("Assinatura");
@@ -446,7 +461,6 @@ export default function Home() {
       y += boxH + 8;
     }
 
-    // Rodapé
     ensureSpace(12);
     pdf.setDrawColor(230);
     pdf.line(margin, pageH - margin, pageW - margin, pageH - margin);
@@ -458,11 +472,141 @@ export default function Home() {
       align: "right",
     });
 
-    pdf.save(`Ficha-${form.nome}.pdf`);
+    const filename = `Ficha-${form.nome}.pdf`;
+
+    // Cria Blob para compartilhar e também faz download
+    const blob = pdf.output("blob");
+    const url = URL.createObjectURL(blob);
+
+    // Baixa automaticamente (mantém o comportamento de "gerar PDF")
+    pdf.save(filename);
+
+    // Vai para tela de sucesso com o PDF pronto para compartilhar
+    setPdfInfo((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { blob, url, filename };
+    });
+    setView("success");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleShare = async () => {
+    if (!pdfInfo) return;
+
+    const file = new File([pdfInfo.blob], pdfInfo.filename, {
+      type: "application/pdf",
+    });
+
+    const canShareFiles =
+      typeof navigator !== "undefined" &&
+      // @ts-ignore
+      typeof navigator.share === "function" &&
+      // @ts-ignore
+      typeof navigator.canShare === "function" &&
+      // @ts-ignore
+      navigator.canShare({ files: [file] });
+
+    try {
+      if (canShareFiles) {
+        // @ts-ignore
+        await navigator.share({
+          title: "Ficha de Cadastro",
+          text: "Segue o PDF da ficha de cadastro.",
+          files: [file],
+        });
+      } else {
+        // Fallback: abre o PDF em nova aba (aí o usuário pode compartilhar/salvar do navegador)
+        window.open(pdfInfo.url, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      // Se o usuário cancelar, não faz nada
+    }
+  };
+
+  const resetToForm = () => {
+    setErrors({});
+    sigRef.current?.clear();
+    setForm({
+      nome: "",
+      nascimento: "",
+      idade: "",
+      peso: "",
+      endereco: "",
+      telefone: "",
+      responsavel: "",
+      telefoneResponsavel: "",
+      emergencia: "",
+      vencimento: "",
+      restricao: "",
+      restricaoDesc: "",
+      medicamentos: "",
+      medicamentosDesc: "",
+      atividade: "",
+      atividadeDesc: "",
+      dataHoje: new Date().toLocaleDateString("pt-BR"),
+    });
+    setView("form");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const inputClass = (key: keyof FormState) =>
     `input ${errors[key] ? "inputError" : ""}`;
+
+  if (view === "success") {
+    return (
+      <div className="min-h-screen bg-black text-white flex justify-center p-4">
+        <div className="w-full max-w-md bg-neutral-900 rounded-2xl p-6 space-y-4 text-center">
+          <img src="/logo.png" className="mx-auto w-44" />
+
+          <h1 className="text-2xl font-bold">PDF gerado com sucesso ✅</h1>
+
+          {pdfInfo && (
+            <p className="text-sm text-neutral-300 break-words">
+              Arquivo: <span className="text-white">{pdfInfo.filename}</span>
+            </p>
+          )}
+
+          <div className="bg-neutral-800 rounded-xl p-4 space-y-2">
+            <p className="font-semibold">Siga a página no Instagram</p>
+            <a
+              href="https://www.instagram.com/roburjiujitsu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-red-400 underline"
+            >
+              @roburjiujitsu
+            </a>
+          </div>
+
+          <button
+            onClick={handleShare}
+            className="w-full bg-red-600 hover:bg-red-700 transition p-3 rounded-xl font-semibold"
+          >
+            Compartilhar PDF
+          </button>
+
+          {/* Fallback útil para desktop */}
+          {pdfInfo && (
+            <a
+              href={pdfInfo.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full bg-neutral-800 hover:bg-neutral-700 transition p-3 rounded-xl font-semibold"
+            >
+              Abrir PDF
+            </a>
+          )}
+
+          <button
+            onClick={resetToForm}
+            className="w-full bg-neutral-800 hover:bg-neutral-700 transition p-3 rounded-xl font-semibold"
+          >
+            Voltar para o cadastro
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white flex justify-center p-4">
@@ -673,7 +817,9 @@ export default function Home() {
         <div>
           <p className="font-semibold">2. Faz uso contínuo de medicamentos?</p>
           <div
-            className={`flex gap-4 ${errors.medicamentos ? "radioError" : ""}`}
+            className={`flex gap-4 ${
+              errors.medicamentos ? "radioError" : ""
+            }`}
           >
             <label>
               <input
