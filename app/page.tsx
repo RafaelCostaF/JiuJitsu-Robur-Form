@@ -706,7 +706,7 @@ export default function Home() {
 
         <div>
           <label className="block text-sm mt-4 mb-2 text-neutral-300">
-            Responsável (se menor)
+            Responsável (se menor de idade)
           </label>
           <input
             ref={setFieldRef("responsavel")}
