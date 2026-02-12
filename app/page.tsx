@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
-import jsPDF from "jspdf";
 
 type FormState = {
   nome: string;
@@ -13,7 +12,7 @@ type FormState = {
   telefone: string;
   responsavel: string;
   telefoneResponsavel: string;
-  emergencia: string; // telefone também
+  emergencia: string;
   vencimento: string;
   restricao: string;
   restricaoDesc: string;
@@ -68,19 +67,10 @@ export default function Home() {
     return () => {
       if (pdfInfo?.url) URL.revokeObjectURL(pdfInfo.url);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (pdfInfo?.url) URL.revokeObjectURL(pdfInfo.url);
-    };
   }, [pdfInfo]);
 
-  // Regex nome + sobrenome
   const nomeRegex = /^[A-Za-zÀ-ÿ]+(\s[A-Za-zÀ-ÿ]+)+$/;
 
-  // Telefone BR fixo no formato: (xx) xxxxx-xxxx (11 dígitos)
   const formatPhone11 = (value: string) => {
     const numbers = value.replace(/\D/g, "").slice(0, 11);
     const ddd = numbers.slice(0, 2);
@@ -96,7 +86,6 @@ export default function Home() {
   const isPhoneComplete = (masked: string) =>
     masked.replace(/\D/g, "").length === 11;
 
-  // Calcula idade a partir da data ISO (YYYY-MM-DD)
   const calcAge = (isoDate: string) => {
     if (!isoDate) return "";
     const birth = new Date(isoDate);
@@ -130,7 +119,6 @@ export default function Home() {
       value = formatPhone11(value);
     }
 
-    // Se mudou nascimento, preenche idade automaticamente
     if (name === "nascimento") {
       const idadeAuto = calcAge(value);
       setForm((prev) => ({
@@ -146,7 +134,6 @@ export default function Home() {
     setForm((prev) => ({ ...prev, [name]: value }));
     clearError(name);
 
-    // Ao trocar para "Não", limpar descrições
     if (name === "restricao" && value === "Não") {
       setForm((prev) => ({ ...prev, restricaoDesc: "" }));
       clearError("restricaoDesc");
@@ -253,13 +240,15 @@ export default function Home() {
   const generatePDF = async () => {
     if (!validateForm()) return;
 
+    // ✅ Import dinâmico (evita problemas de build/SSR)
+    const { default: jsPDF } = await import("jspdf");
+
     const pdf = new jsPDF("p", "mm", "a4");
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const margin = 14;
     const contentW = pageW - margin * 2;
 
-    // Helpers de paginação
     let y = 0;
     const ensureSpace = (needed: number) => {
       if (y + needed > pageH - margin) {
@@ -354,13 +343,11 @@ export default function Home() {
       y += h + 6;
     };
 
-    // --- Logo (maior verticalmente) + cabeçalho ---
     const img = new Image();
     img.src = "/logo.png";
     await new Promise((resolve) => (img.onload = resolve));
 
-    // AUMENTA MAIS A ALTURA DA LOGO (verticalmente)
-    const desiredLogoH = 86; // <-- aumente aqui se quiser ainda maior
+    const desiredLogoH = 86;
     const ratio = img.width / img.height || 3;
     let logoH = desiredLogoH;
     let logoW = logoH * ratio;
@@ -474,14 +461,11 @@ export default function Home() {
 
     const filename = `Ficha-${form.nome}.pdf`;
 
-    // Cria Blob para compartilhar e também faz download
     const blob = pdf.output("blob");
     const url = URL.createObjectURL(blob);
 
-    // Baixa automaticamente (mantém o comportamento de "gerar PDF")
     pdf.save(filename);
 
-    // Vai para tela de sucesso com o PDF pronto para compartilhar
     setPdfInfo((prev) => {
       if (prev?.url) URL.revokeObjectURL(prev.url);
       return { blob, url, filename };
@@ -515,12 +499,9 @@ export default function Home() {
           files: [file],
         });
       } else {
-        // Fallback: abre o PDF em nova aba (aí o usuário pode compartilhar/salvar do navegador)
         window.open(pdfInfo.url, "_blank", "noopener,noreferrer");
       }
-    } catch {
-      // Se o usuário cancelar, não faz nada
-    }
+    } catch {}
   };
 
   const resetToForm = () => {
@@ -585,7 +566,6 @@ export default function Home() {
             Compartilhar PDF
           </button>
 
-          {/* Fallback útil para desktop */}
           {pdfInfo && (
             <a
               href={pdfInfo.url}
@@ -621,7 +601,9 @@ export default function Home() {
         <div>
           <label className="label">Nome completo</label>
           <input
-            ref={(el) => (fieldRefs.current.nome = el)}
+            ref={(el) => {
+              fieldRefs.current.nome = el;
+            }}
             required
             name="nome"
             value={form.nome}
@@ -634,7 +616,9 @@ export default function Home() {
         <div>
           <label className="label">Data de nascimento</label>
           <input
-            ref={(el) => (fieldRefs.current.nascimento = el)}
+            ref={(el) => {
+              fieldRefs.current.nascimento = el;
+            }}
             required
             type="date"
             name="nascimento"
@@ -650,7 +634,9 @@ export default function Home() {
         <div>
           <label className="label">Idade</label>
           <input
-            ref={(el) => (fieldRefs.current.idade = el)}
+            ref={(el) => {
+              fieldRefs.current.idade = el;
+            }}
             required
             name="idade"
             value={form.idade}
@@ -663,7 +649,9 @@ export default function Home() {
         <div>
           <label className="label">Peso (kg)</label>
           <input
-            ref={(el) => (fieldRefs.current.peso = el)}
+            ref={(el) => {
+              fieldRefs.current.peso = el;
+            }}
             required
             name="peso"
             value={form.peso}
@@ -676,7 +664,9 @@ export default function Home() {
         <div>
           <label className="label">Endereço</label>
           <input
-            ref={(el) => (fieldRefs.current.endereco = el)}
+            ref={(el) => {
+              fieldRefs.current.endereco = el;
+            }}
             required
             name="endereco"
             value={form.endereco}
@@ -689,7 +679,9 @@ export default function Home() {
         <div>
           <label className="label">Telefone (xx) xxxxx-xxxx</label>
           <input
-            ref={(el) => (fieldRefs.current.telefone = el)}
+            ref={(el) => {
+              fieldRefs.current.telefone = el;
+            }}
             name="telefone"
             value={form.telefone}
             onChange={handleChange}
@@ -702,7 +694,9 @@ export default function Home() {
         <div>
           <label className="label">Responsável (se menor)</label>
           <input
-            ref={(el) => (fieldRefs.current.responsavel = el)}
+            ref={(el) => {
+              fieldRefs.current.responsavel = el;
+            }}
             name="responsavel"
             value={form.responsavel}
             onChange={handleChange}
@@ -716,7 +710,9 @@ export default function Home() {
         <div>
           <label className="label">Telefone responsável (xx) xxxxx-xxxx</label>
           <input
-            ref={(el) => (fieldRefs.current.telefoneResponsavel = el)}
+            ref={(el) => {
+              fieldRefs.current.telefoneResponsavel = el;
+            }}
             name="telefoneResponsavel"
             value={form.telefoneResponsavel}
             onChange={handleChange}
@@ -731,7 +727,9 @@ export default function Home() {
         <div>
           <label className="label">Contato emergência (xx) xxxxx-xxxx</label>
           <input
-            ref={(el) => (fieldRefs.current.emergencia = el)}
+            ref={(el) => {
+              fieldRefs.current.emergencia = el;
+            }}
             required
             name="emergencia"
             value={form.emergencia}
@@ -749,7 +747,9 @@ export default function Home() {
             Dia de vencimento (1 a 31) - data de pagamento da mensalidade
           </label>
           <input
-            ref={(el) => (fieldRefs.current.vencimento = el)}
+            ref={(el) => {
+              fieldRefs.current.vencimento = el;
+            }}
             required
             type="number"
             min="1"
@@ -772,7 +772,9 @@ export default function Home() {
           <div className={`flex gap-4 ${errors.restricao ? "radioError" : ""}`}>
             <label>
               <input
-                ref={(el) => (fieldRefs.current.restricao = el)}
+                ref={(el) => {
+                  fieldRefs.current.restricao = el;
+                }}
                 required
                 type="radio"
                 name="restricao"
@@ -800,7 +802,9 @@ export default function Home() {
             <div>
               <label className="label">Qual restrição?</label>
               <input
-                ref={(el) => (fieldRefs.current.restricaoDesc = el)}
+                ref={(el) => {
+                  fieldRefs.current.restricaoDesc = el;
+                }}
                 required
                 name="restricaoDesc"
                 value={form.restricaoDesc}
@@ -823,7 +827,9 @@ export default function Home() {
           >
             <label>
               <input
-                ref={(el) => (fieldRefs.current.medicamentos = el)}
+                ref={(el) => {
+                  fieldRefs.current.medicamentos = el;
+                }}
                 required
                 type="radio"
                 name="medicamentos"
@@ -853,7 +859,9 @@ export default function Home() {
             <div>
               <label className="label">Quais medicamentos?</label>
               <input
-                ref={(el) => (fieldRefs.current.medicamentosDesc = el)}
+                ref={(el) => {
+                  fieldRefs.current.medicamentosDesc = el;
+                }}
                 required
                 name="medicamentosDesc"
                 value={form.medicamentosDesc}
@@ -874,7 +882,9 @@ export default function Home() {
           <div className={`flex gap-4 ${errors.atividade ? "radioError" : ""}`}>
             <label>
               <input
-                ref={(el) => (fieldRefs.current.atividade = el)}
+                ref={(el) => {
+                  fieldRefs.current.atividade = el;
+                }}
                 required
                 type="radio"
                 name="atividade"
@@ -902,7 +912,9 @@ export default function Home() {
             <div>
               <label className="label">Qual atividade?</label>
               <input
-                ref={(el) => (fieldRefs.current.atividadeDesc = el)}
+                ref={(el) => {
+                  fieldRefs.current.atividadeDesc = el;
+                }}
                 required
                 name="atividadeDesc"
                 value={form.atividadeDesc}
