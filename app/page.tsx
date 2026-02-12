@@ -228,6 +228,10 @@ export default function Home() {
     if (form.atividade === "Sim" && !form.atividadeDesc.trim())
       newErrors.atividadeDesc = "Informe qual atividade.";
 
+    if (!sigRef.current || sigRef.current.isEmpty()) {
+      alert("A assinatura é obrigatória.");
+      return false;
+    }
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length > 0) {
@@ -393,7 +397,7 @@ export default function Home() {
     );
 
     drawTwoColRow(
-      { label: "Responsável (se menor)", value: safe(form.responsavel) },
+      { label: "Responsável (se menor de idade)", value: safe(form.responsavel) },
       { label: "Telefone responsável", value: safe(form.telefoneResponsavel) }
     );
 
