@@ -66,6 +66,13 @@ export default function Home() {
     Partial<Record<keyof FormState, HTMLInputElement | null>>
   >({});
 
+  // ✅ Helper para refs (corrige o erro do build: ref callback não pode retornar valor)
+  const setFieldRef =
+    (key: keyof FormState) =>
+    (el: HTMLInputElement | null) => {
+      fieldRefs.current[key] = el;
+    };
+
   useEffect(() => {
     return () => {
       if (pdfInfo?.url) URL.revokeObjectURL(pdfInfo.url);
@@ -598,7 +605,7 @@ export default function Home() {
             Nome completo
           </label>
           <input
-            ref={(el) => (fieldRefs.current.nome = el)}
+            ref={setFieldRef("nome")}
             name="nome"
             value={form.nome}
             onChange={handleChange}
@@ -615,7 +622,7 @@ export default function Home() {
             Data de nascimento
           </label>
           <input
-            ref={(el) => (fieldRefs.current.nascimento = el)}
+            ref={setFieldRef("nascimento")}
             type="date"
             name="nascimento"
             value={form.nascimento}
@@ -633,7 +640,7 @@ export default function Home() {
             Idade
           </label>
           <input
-            ref={(el) => (fieldRefs.current.idade = el)}
+            ref={setFieldRef("idade")}
             name="idade"
             value={form.idade}
             onChange={handleChange}
@@ -650,7 +657,7 @@ export default function Home() {
             Peso (kg)
           </label>
           <input
-            ref={(el) => (fieldRefs.current.peso = el)}
+            ref={setFieldRef("peso")}
             name="peso"
             value={form.peso}
             onChange={handleChange}
@@ -667,7 +674,7 @@ export default function Home() {
             Endereço
           </label>
           <input
-            ref={(el) => (fieldRefs.current.endereco = el)}
+            ref={setFieldRef("endereco")}
             name="endereco"
             value={form.endereco}
             onChange={handleChange}
@@ -684,7 +691,7 @@ export default function Home() {
             Telefone (xx) xxxxx-xxxx
           </label>
           <input
-            ref={(el) => (fieldRefs.current.telefone = el)}
+            ref={setFieldRef("telefone")}
             name="telefone"
             value={form.telefone}
             onChange={handleChange}
@@ -702,7 +709,7 @@ export default function Home() {
             Responsável (se menor)
           </label>
           <input
-            ref={(el) => (fieldRefs.current.responsavel = el)}
+            ref={setFieldRef("responsavel")}
             name="responsavel"
             value={form.responsavel}
             onChange={handleChange}
@@ -716,7 +723,7 @@ export default function Home() {
             Telefone responsável (xx) xxxxx-xxxx
           </label>
           <input
-            ref={(el) => (fieldRefs.current.telefoneResponsavel = el)}
+            ref={setFieldRef("telefoneResponsavel")}
             name="telefoneResponsavel"
             value={form.telefoneResponsavel}
             onChange={handleChange}
@@ -731,7 +738,7 @@ export default function Home() {
             Contato emergência (xx) xxxxx-xxxx
           </label>
           <input
-            ref={(el) => (fieldRefs.current.emergencia = el)}
+            ref={setFieldRef("emergencia")}
             name="emergencia"
             value={form.emergencia}
             onChange={handleChange}
@@ -749,7 +756,7 @@ export default function Home() {
             Dia de vencimento (1 a 31)
           </label>
           <input
-            ref={(el) => (fieldRefs.current.vencimento = el)}
+            ref={setFieldRef("vencimento")}
             type="number"
             min="1"
             max="31"
@@ -807,6 +814,7 @@ export default function Home() {
                 Qual restrição?
               </label>
               <input
+                ref={setFieldRef("restricaoDesc")}
                 name="restricaoDesc"
                 value={form.restricaoDesc}
                 onChange={handleChange}
@@ -862,6 +870,7 @@ export default function Home() {
                 Quais medicamentos?
               </label>
               <input
+                ref={setFieldRef("medicamentosDesc")}
                 name="medicamentosDesc"
                 value={form.medicamentosDesc}
                 onChange={handleChange}
@@ -919,6 +928,7 @@ export default function Home() {
                 Qual atividade?
               </label>
               <input
+                ref={setFieldRef("atividadeDesc")}
                 name="atividadeDesc"
                 value={form.atividadeDesc}
                 onChange={handleChange}
